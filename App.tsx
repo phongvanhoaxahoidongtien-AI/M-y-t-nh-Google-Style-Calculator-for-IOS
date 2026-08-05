@@ -13,6 +13,7 @@ const App: React.FC = () => {
     showHistory: false,
   });
 
+  const [editingItemIndex, setEditingItemIndex] = useState<number | null>(null);
   const [editingSource, setEditingSource] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -79,6 +80,7 @@ const App: React.FC = () => {
       if (val === 'AC') {
         newExpr = '';
         newCursorPos = 0;
+        setEditingItemIndex(null);
         setEditingSource(null);
       } else if (val === 'DEL') {
         if (start !== end) {
@@ -91,21 +93,40 @@ const App: React.FC = () => {
       } else if (val === '=') {
         const finalResult = calculateResult(newExpr);
         if (finalResult && finalResult !== 'Lỗi' && newExpr.trim() !== finalResult) {
-          const newItem: HistoryItem = {
-            id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
-            expression: formatForDisplay(newExpr),
-            result: finalResult,
-            timestamp: Date.now()
-          };
-          
-          setEditingSource(null);
-
-          return {
-            ...prev,
-            expression: finalResult,
-            result: '',
-            history: [newItem, ...prev.history].slice(0, 50)
-          };
+          if (editingItemIndex !== null && prev.history[editingItemIndex]) {
+            // Update history item in-place
+            const updatedHistory = [...prev.history];
+            updatedHistory[editingItemIndex] = {
+              ...updatedHistory[editingItemIndex],
+              expression: formatForDisplay(newExpr),
+              result: finalResult,
+              timestamp: Date.now()
+            };
+            setEditingItemIndex(null);
+            setEditingSource(null);
+            return {
+              ...prev,
+              expression: finalResult,
+              result: '',
+              history: updatedHistory
+            };
+          } else {
+            // New history item
+            const newItem: HistoryItem = {
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+              expression: formatForDisplay(newExpr),
+              result: finalResult,
+              timestamp: Date.now()
+            };
+            setEditingItemIndex(null);
+            setEditingSource(null);
+            return {
+              ...prev,
+              expression: finalResult,
+              result: '',
+              history: [newItem, ...prev.history].slice(0, 50)
+            };
+          }
         }
         return prev;
       } else {
@@ -137,7 +158,7 @@ const App: React.FC = () => {
 
       return { ...prev, expression: newExpr, result: newResult };
     });
-  }, []);
+  }, [editingItemIndex]);
 
   const toggleScientific = () => {
     setState(prev => ({ ...prev, isScientific: !prev.isScientific }));
@@ -145,6 +166,8 @@ const App: React.FC = () => {
 
   const clearHistory = () => {
     setState(prev => ({ ...prev, history: [] }));
+    setEditingItemIndex(null);
+    setEditingSource(null);
   };
 
   const updateHistoryItem = (index: number, newExpression: string, newResult: string) => {
@@ -179,11 +202,16 @@ const App: React.FC = () => {
       ...prev,
       history: prev.history.filter((_, i) => i !== index),
     }));
+    if (editingItemIndex === index) {
+      setEditingItemIndex(null);
+      setEditingSource(null);
+    }
   };
 
-  const selectHistoryForEdit = (item: HistoryItem) => {
+  const selectHistoryForEdit = (item: HistoryItem, index: number) => {
     const expr = item.expression;
     const res = calculateResult(expr);
+    setEditingItemIndex(index);
     setEditingSource(item.expression);
     
     setState(prev => ({
@@ -199,6 +227,19 @@ const App: React.FC = () => {
         inputRef.current.setSelectionRange(expr.length, expr.length);
       }
     }, 100);
+  };
+
+  const cancelEditMode = () => {
+    setEditingItemIndex(null);
+    setEditingSource(null);
+  };
+
+  const saveUpdatedItemDirectly = () => {
+    if (editingItemIndex !== null && state.history[editingItemIndex] && state.expression.trim()) {
+      const finalResult = calculateResult(state.expression) || '0';
+      updateHistoryItem(editingItemIndex, formatForDisplay(state.expression), finalResult);
+      cancelEditMode();
+    }
   };
 
   return (
@@ -227,6 +268,7 @@ const App: React.FC = () => {
 
       {/* Display Area */}
       <div className="flex-1 flex flex-col justify-end px-6 py-4 overflow-hidden relative">
+        {/* History Modal Overlay */}
         {state.showHistory && (
           <div className="absolute inset-0 z-50 bg-[#202124] flex flex-col animate-in slide-in-from-top duration-300">
              <div className="flex justify-between items-center px-6 py-5 border-b border-gray-800">
@@ -274,30 +316,51 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Source Badge if Editing from History */}
-        {editingSource && !state.showHistory && (
-          <div className="mb-2 flex items-center justify-between bg-[#2a2d32] border border-[#8ab4f8]/30 px-3 py-1.5 rounded-xl animate-in fade-in">
-            <span className="text-xs text-[#8ab4f8] font-medium flex items-center gap-1.5 truncate">
-              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Sửa từ lịch sử: <span className="text-gray-300 font-mono truncate max-w-[180px]">{editingSource}</span>
-            </span>
-            <button
-              onClick={() => setEditingSource(null)}
-              className="text-gray-400 hover:text-white text-xs px-1.5 py-0.5 rounded transition-colors"
-              title="Đóng thông báo"
-            >
-              ✕
-            </button>
+        {/* Editing Banner */}
+        {editingSource !== null && !state.showHistory && (
+          <div className="mb-2 bg-[#2a2d32] border border-[#8ab4f8]/50 p-2.5 rounded-xl animate-in fade-in flex flex-col gap-1.5">
+            <div className="flex items-center justify-between text-xs text-[#8ab4f8] font-medium">
+              <span className="flex items-center gap-1.5 truncate">
+                <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                Chỉnh sửa phép tính từ lịch sử
+              </span>
+              <div className="flex items-center gap-2">
+                {editingItemIndex !== null && (
+                  <button
+                    onClick={saveUpdatedItemDirectly}
+                    className="text-xs px-2.5 py-1 rounded-lg bg-[#8ab4f8] text-[#202124] font-semibold hover:bg-[#aecbfa] transition-colors"
+                    title="Cập nhật trực tiếp phép tính này trong lịch sử"
+                  >
+                    Lưu cập nhật
+                  </button>
+                )}
+                <button
+                  onClick={cancelEditMode}
+                  className="text-gray-400 hover:text-white text-xs px-2 py-1 rounded-lg bg-gray-800 transition-colors"
+                  title="Thoát chế độ sửa"
+                >
+                  Thoát
+                </button>
+              </div>
+            </div>
+            <div className="text-[11px] text-gray-400 leading-tight">
+              👇 Chạm vào vị trí bất kỳ trên phép tính để di chuyển con trỏ. Dùng bàn phím máy tính bên dưới để sửa. Bấm <span className="text-[#8ab4f8] font-bold">=</span> để tính & lưu.
+            </div>
           </div>
         )}
 
-        {/* Expression Input Area */}
+        {/* Expression Input Area - inputMode="none" prevents mobile soft keyboard */}
         <div className="text-right overflow-x-auto no-scrollbar w-full">
           <input
             ref={inputRef}
             type="text"
+            inputMode="none"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             value={state.expression}
             onChange={(e) => {
               const val = e.target.value;
@@ -305,7 +368,7 @@ const App: React.FC = () => {
               setState(prev => ({ ...prev, expression: val, result: res }));
             }}
             placeholder="0"
-            className="w-full text-right bg-transparent text-gray-200 text-3xl font-light mb-1 focus:outline-none focus:border-b focus:border-[#8ab4f8] font-mono tracking-wide selection:bg-[#8ab4f8]/30"
+            className="w-full text-right bg-transparent text-gray-200 text-3xl font-light mb-1 focus:outline-none font-mono tracking-wide selection:bg-[#8ab4f8]/30 cursor-pointer"
           />
           <div className={`text-white transition-all duration-200 ${state.result ? 'text-5xl font-medium text-[#8ab4f8]' : 'text-3xl text-gray-600'}`}>
             {state.result ? `= ${state.result}` : ' '}
