@@ -3,6 +3,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as math from 'mathjs';
 import { MAIN_BUTTONS, SCIENTIFIC_BUTTONS, COLORS } from './constants';
 import { ButtonType, CalculatorState, HistoryItem } from './types';
+import { HistoryItemCard } from './components/HistoryItemCard';
 
 const App: React.FC = () => {
   const [state, setState] = useState<CalculatorState>({
@@ -104,6 +105,27 @@ const App: React.FC = () => {
     setState(prev => ({ ...prev, history: [] }));
   };
 
+  const updateHistoryItem = (index: number, newExpression: string, newResult: string) => {
+    setState(prev => {
+      const updated = [...prev.history];
+      if (updated[index]) {
+        updated[index] = {
+          ...updated[index],
+          expression: newExpression,
+          result: newResult,
+        };
+      }
+      return { ...prev, history: updated };
+    });
+  };
+
+  const deleteHistoryItem = (index: number) => {
+    setState(prev => ({
+      ...prev,
+      history: prev.history.filter((_, i) => i !== index),
+    }));
+  };
+
   const selectHistory = (item: HistoryItem) => {
     setState(prev => ({
       ...prev,
@@ -120,7 +142,8 @@ const App: React.FC = () => {
       <div className="flex items-center justify-between px-6 pt-6 pb-2">
         <button 
           onClick={() => setState(prev => ({...prev, showHistory: !prev.showHistory}))}
-          className="text-gray-400 p-2 rounded-full active:bg-gray-700 transition-colors"
+          className="text-gray-400 p-2 rounded-full active:bg-gray-700 transition-colors flex items-center gap-2"
+          title="Xem lịch sử tính toán"
         >
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -140,31 +163,46 @@ const App: React.FC = () => {
       <div className="flex-1 flex flex-col justify-end px-8 py-4 overflow-hidden relative">
         {state.showHistory && (
           <div className="absolute inset-0 z-50 bg-[#202124] flex flex-col animate-in slide-in-from-top duration-300">
-             <div className="flex justify-between items-center p-6 border-b border-gray-800">
-                <h2 className="text-xl font-medium">History</h2>
-                <button onClick={clearHistory} className="text-blue-400 text-sm font-medium">Clear history</button>
+             <div className="flex justify-between items-center px-6 py-5 border-b border-gray-800">
+                <h2 className="text-xl font-medium text-white flex items-center gap-2">
+                  <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Lịch sử tính toán
+                </h2>
+                {state.history.length > 0 && (
+                  <button onClick={clearHistory} className="text-red-400 hover:text-red-300 text-sm font-medium transition-colors">
+                    Xóa tất cả
+                  </button>
+                )}
              </div>
              <div className="flex-1 overflow-y-auto no-scrollbar p-6">
                 {state.history.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-gray-500">No history yet</div>
+                  <div className="h-full flex flex-col items-center justify-center text-gray-500 gap-2">
+                    <svg className="w-10 h-10 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p>Chưa có lịch sử tính toán</p>
+                  </div>
                 ) : (
                   state.history.map((item, idx) => (
-                    <div 
-                      key={idx} 
-                      className="mb-8 text-right active:opacity-50"
-                      onClick={() => selectHistory(item)}
-                    >
-                      <div className="text-gray-400 text-lg mb-1">{item.expression}</div>
-                      <div className="text-white text-2xl font-medium">= {item.result}</div>
-                    </div>
+                    <HistoryItemCard
+                      key={item.id || item.timestamp || idx}
+                      item={item}
+                      index={idx}
+                      onSelect={selectHistory}
+                      onSaveEdit={updateHistoryItem}
+                      onDelete={deleteHistoryItem}
+                      calculateResult={calculateResult}
+                    />
                   ))
                 )}
              </div>
              <button 
                 onClick={() => setState(prev => ({...prev, showHistory: false}))}
-                className="p-4 text-center text-blue-400 font-medium border-t border-gray-800"
+                className="p-4 text-center text-[#8ab4f8] hover:bg-gray-800/50 font-medium border-t border-gray-800 transition-colors"
               >
-                Close
+                Đóng
               </button>
           </div>
         )}

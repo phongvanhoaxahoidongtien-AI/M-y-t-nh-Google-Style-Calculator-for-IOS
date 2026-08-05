@@ -8,6 +8,7 @@ export type CalculatorState = {
 };
 
 export type HistoryItem = {
+  id?: string;
   expression: string;
   result: string;
   timestamp: number;
