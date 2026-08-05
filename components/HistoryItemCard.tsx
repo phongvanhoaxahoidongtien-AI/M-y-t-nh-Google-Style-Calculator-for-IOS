@@ -4,8 +4,9 @@ import { HistoryItem } from '../types';
 interface HistoryItemCardProps {
   item: HistoryItem;
   index: number;
-  onSelect: (item: HistoryItem) => void;
+  onSelectForEdit: (item: HistoryItem) => void;
   onSaveEdit: (index: number, newExpression: string, newResult: string) => void;
+  onAddAsNewHistory: (newExpression: string, newResult: string) => void;
   onDelete: (index: number) => void;
   calculateResult: (expr: string) => string;
 }
@@ -13,8 +14,9 @@ interface HistoryItemCardProps {
 export const HistoryItemCard: React.FC<HistoryItemCardProps> = ({
   item,
   index,
-  onSelect,
+  onSelectForEdit,
   onSaveEdit,
+  onAddAsNewHistory,
   onDelete,
   calculateResult,
 }) => {
@@ -43,10 +45,17 @@ export const HistoryItemCard: React.FC<HistoryItemCardProps> = ({
     handleExprChange(newVal);
   };
 
-  const handleSave = () => {
+  const handleUpdateCurrent = () => {
     if (!editExpr.trim()) return;
     const finalResult = calculateResult(editExpr) || '0';
     onSaveEdit(index, editExpr, finalResult);
+    setIsEditing(false);
+  };
+
+  const handleCreateNew = () => {
+    if (!editExpr.trim()) return;
+    const finalResult = calculateResult(editExpr) || '0';
+    onAddAsNewHistory(editExpr, finalResult);
     setIsEditing(false);
   };
 
@@ -57,7 +66,7 @@ export const HistoryItemCard: React.FC<HistoryItemCardProps> = ({
   };
 
   if (isEditing) {
-    const isValid = Boolean(liveResult && editExpr.trim());
+    const isValid = Boolean(liveResult && liveResult !== 'Lỗi' && editExpr.trim());
 
     return (
       <div className="mb-4 p-4 bg-[#2a2d32] border border-[#8ab4f8]/50 rounded-2xl shadow-lg transition-all">
@@ -114,42 +123,48 @@ export const HistoryItemCard: React.FC<HistoryItemCardProps> = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-800 pt-3">
           <button
             type="button"
-            disabled={!isValid}
-            onClick={() => onSelect({ ...item, expression: editExpr, result: liveResult })}
-            className={`px-3 py-1.5 text-xs font-medium rounded-xl transition-all ${
-              isValid
-                ? 'text-[#8ab4f8] hover:bg-gray-800 hover:text-[#aecbfa]'
-                : 'text-gray-600 cursor-not-allowed'
-            }`}
-            title="Đưa biểu thức này ra màn hình máy tính để tiếp tục tính"
+            onClick={() => {
+              setIsEditing(false);
+              onSelectForEdit({ ...item, expression: editExpr, result: liveResult });
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-[#8ab4f8] hover:bg-gray-800 rounded-xl transition-all flex items-center gap-1"
+            title="Đưa biểu thức này ra màn hình máy tính để tiếp tục chỉnh sửa bằng bàn phím máy tính"
           >
-            Đưa ra máy tính
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+            </svg>
+            Sửa trên máy tính
           </button>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 ml-auto">
             <button
               type="button"
-              onClick={handleCancel}
-              className="px-3.5 py-1.5 text-xs font-medium text-gray-300 hover:bg-gray-700/50 rounded-xl transition-colors"
+              disabled={!isValid}
+              onClick={handleUpdateCurrent}
+              className={`px-3 py-1.5 text-xs font-medium rounded-xl border transition-all ${
+                isValid
+                  ? 'border-gray-600 text-gray-200 hover:bg-gray-700/60'
+                  : 'border-gray-800 text-gray-600 cursor-not-allowed'
+              }`}
+              title="Cập nhật trực tiếp dòng lịch sử này"
             >
-              Hủy
+              Cập nhật dòng này
             </button>
             <button
               type="button"
               disabled={!isValid}
-              onClick={handleSave}
-              className={`px-4 py-1.5 text-xs font-medium rounded-xl flex items-center gap-1.5 transition-all ${
+              onClick={handleCreateNew}
+              className={`px-3.5 py-1.5 text-xs font-semibold rounded-xl transition-all flex items-center gap-1 ${
                 isValid
-                  ? 'bg-[#8ab4f8] text-[#202124] hover:bg-[#aecbfa] active:scale-95 shadow-sm font-semibold'
+                  ? 'bg-[#8ab4f8] text-[#202124] hover:bg-[#aecbfa] active:scale-95 shadow-sm'
                   : 'bg-gray-700 text-gray-500 cursor-not-allowed'
               }`}
+              title="Thêm thành một phép tính mới vào lịch sử"
             >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-              </svg>
-              Lưu
+              + Tạo phép tính mới
             </button>
           </div>
         </div>
@@ -166,15 +181,31 @@ export const HistoryItemCard: React.FC<HistoryItemCardProps> = ({
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setIsEditing(true);
+              onSelectForEdit(item);
             }}
-            className="p-2 text-gray-400 hover:text-[#8ab4f8] hover:bg-gray-700/50 rounded-xl transition-colors"
-            title="Sửa phép tính"
+            className="p-2 text-[#8ab4f8] hover:bg-gray-700/60 rounded-xl transition-colors flex items-center gap-1 text-xs font-medium"
+            title="Đưa phép tính này lên màn hình máy tính để chỉnh sửa các số & phép tính"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
             </svg>
+            <span className="hidden sm:inline">Sửa</span>
           </button>
+          
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+            className="p-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 rounded-xl transition-colors"
+            title="Sửa nhanh tại đây"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+            </svg>
+          </button>
+
           <button
             type="button"
             onClick={(e) => {
@@ -193,13 +224,13 @@ export const HistoryItemCard: React.FC<HistoryItemCardProps> = ({
         {/* Expression and Result (Clicking loads into calculator) */}
         <div
           className="flex-1 text-right cursor-pointer"
-          onClick={() => onSelect(item)}
-          title="Bấm để dùng phép tính này"
+          onClick={() => onSelectForEdit(item)}
+          title="Bấm để đưa phép tính này ra máy tính để sửa/tính lại"
         >
-          <div className="text-gray-400 text-sm font-light mb-0.5 break-all">
+          <div className="text-gray-300 text-base font-medium mb-0.5 break-all">
             {item.expression}
           </div>
-          <div className="text-white text-xl font-medium break-all">
+          <div className="text-[#8ab4f8] text-xl font-medium break-all">
             = {item.result}
           </div>
         </div>

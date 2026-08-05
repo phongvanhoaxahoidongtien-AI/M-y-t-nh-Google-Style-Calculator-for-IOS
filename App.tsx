@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import * as math from 'mathjs';
 import { MAIN_BUTTONS, SCIENTIFIC_BUTTONS, COLORS } from './constants';
@@ -14,7 +13,8 @@ const App: React.FC = () => {
     showHistory: false,
   });
 
-  const displayRef = useRef<HTMLDivElement>(null);
+  const [editingSource, setEditingSource] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Load history on mount
   useEffect(() => {
@@ -33,19 +33,27 @@ const App: React.FC = () => {
     localStorage.setItem('calc_history', JSON.stringify(state.history));
   }, [state.history]);
 
+  const formatForDisplay = (expr: string): string => {
+    return expr
+      .replace(/\*/g, '×')
+      .replace(/\//g, '÷')
+      .replace(/-/g, '−');
+  };
+
   const calculateResult = (expr: string): string => {
-    if (!expr) return '';
+    if (!expr || !expr.trim()) return '';
     try {
       // Replace display symbols with mathjs friendly ones
       let cleaned = expr
         .replace(/×/g, '*')
         .replace(/÷/g, '/')
         .replace(/−/g, '-')
+        .replace(/√/g, 'sqrt')
         .replace(/%/g, '/100');
       
       const res = math.evaluate(cleaned);
       if (typeof res === 'number') {
-        // Format nicely
+        if (isNaN(res) || !isFinite(res)) return 'Lỗi';
         return Number.isInteger(res) ? res.toString() : parseFloat(res.toFixed(8)).toString();
       }
       return res.toString();
@@ -56,23 +64,42 @@ const App: React.FC = () => {
 
   const handleInput = useCallback((val: string) => {
     setState(prev => {
-      let newExpr = prev.expression;
-      let newResult = prev.result;
+      let expr = prev.expression;
+      
+      let start = expr.length;
+      let end = expr.length;
+      if (inputRef.current) {
+        start = inputRef.current.selectionStart ?? expr.length;
+        end = inputRef.current.selectionEnd ?? expr.length;
+      }
+
+      let newExpr = expr;
+      let newCursorPos = start;
 
       if (val === 'AC') {
         newExpr = '';
-        newResult = '';
+        newCursorPos = 0;
+        setEditingSource(null);
       } else if (val === 'DEL') {
-        newExpr = newExpr.slice(0, -1);
-        newResult = calculateResult(newExpr);
+        if (start !== end) {
+          newExpr = expr.slice(0, start) + expr.slice(end);
+          newCursorPos = start;
+        } else if (start > 0) {
+          newExpr = expr.slice(0, start - 1) + expr.slice(start);
+          newCursorPos = start - 1;
+        }
       } else if (val === '=') {
         const finalResult = calculateResult(newExpr);
-        if (finalResult && newExpr !== finalResult) {
+        if (finalResult && finalResult !== 'Lỗi' && newExpr.trim() !== finalResult) {
           const newItem: HistoryItem = {
-            expression: newExpr,
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+            expression: formatForDisplay(newExpr),
             result: finalResult,
             timestamp: Date.now()
           };
+          
+          setEditingSource(null);
+
           return {
             ...prev,
             expression: finalResult,
@@ -82,16 +109,31 @@ const App: React.FC = () => {
         }
         return prev;
       } else {
-        // Simple validation to prevent double operators
-        const lastChar = newExpr.slice(-1);
-        const operators = ['+', '-', '*', '/', '^', '.'];
-        if (operators.includes(val) && operators.includes(lastChar)) {
-          newExpr = newExpr.slice(0, -1) + val;
+        let insertVal = val;
+        if (val === '*') insertVal = '×';
+        if (val === '/') insertVal = '÷';
+        if (val === '-') insertVal = '−';
+
+        const charBefore = expr.slice(start - 1, start);
+        const operators = ['+', '−', '×', '÷', '^', '.'];
+        
+        if (operators.includes(insertVal) && operators.includes(charBefore)) {
+          newExpr = expr.slice(0, start - 1) + insertVal + expr.slice(end);
+          newCursorPos = start;
         } else {
-          newExpr += val;
+          newExpr = expr.slice(0, start) + insertVal + expr.slice(end);
+          newCursorPos = start + insertVal.length;
         }
-        newResult = calculateResult(newExpr);
       }
+
+      const newResult = calculateResult(newExpr);
+
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.setSelectionRange(newCursorPos, newCursorPos);
+        }
+      }, 0);
 
       return { ...prev, expression: newExpr, result: newResult };
     });
@@ -119,6 +161,19 @@ const App: React.FC = () => {
     });
   };
 
+  const addAsNewHistory = (newExpression: string, newResult: string) => {
+    const newItem: HistoryItem = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 4),
+      expression: newExpression,
+      result: newResult,
+      timestamp: Date.now()
+    };
+    setState(prev => ({
+      ...prev,
+      history: [newItem, ...prev.history].slice(0, 50)
+    }));
+  };
+
   const deleteHistoryItem = (index: number) => {
     setState(prev => ({
       ...prev,
@@ -126,13 +181,24 @@ const App: React.FC = () => {
     }));
   };
 
-  const selectHistory = (item: HistoryItem) => {
+  const selectHistoryForEdit = (item: HistoryItem) => {
+    const expr = item.expression;
+    const res = calculateResult(expr);
+    setEditingSource(item.expression);
+    
     setState(prev => ({
       ...prev,
-      expression: item.expression,
-      result: item.result,
+      expression: expr,
+      result: res,
       showHistory: false
     }));
+
+    setTimeout(() => {
+      if (inputRef.current) {
+        inputRef.current.focus();
+        inputRef.current.setSelectionRange(expr.length, expr.length);
+      }
+    }, 100);
   };
 
   return (
@@ -160,7 +226,7 @@ const App: React.FC = () => {
       </div>
 
       {/* Display Area */}
-      <div className="flex-1 flex flex-col justify-end px-8 py-4 overflow-hidden relative">
+      <div className="flex-1 flex flex-col justify-end px-6 py-4 overflow-hidden relative">
         {state.showHistory && (
           <div className="absolute inset-0 z-50 bg-[#202124] flex flex-col animate-in slide-in-from-top duration-300">
              <div className="flex justify-between items-center px-6 py-5 border-b border-gray-800">
@@ -190,8 +256,9 @@ const App: React.FC = () => {
                       key={item.id || item.timestamp || idx}
                       item={item}
                       index={idx}
-                      onSelect={selectHistory}
+                      onSelectForEdit={selectHistoryForEdit}
                       onSaveEdit={updateHistoryItem}
+                      onAddAsNewHistory={addAsNewHistory}
                       onDelete={deleteHistoryItem}
                       calculateResult={calculateResult}
                     />
@@ -207,12 +274,41 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <div className="text-right overflow-x-auto no-scrollbar">
-          <div className="text-gray-400 text-3xl font-light mb-2 whitespace-nowrap min-h-[40px]">
-            {state.expression || ' '}
+        {/* Source Badge if Editing from History */}
+        {editingSource && !state.showHistory && (
+          <div className="mb-2 flex items-center justify-between bg-[#2a2d32] border border-[#8ab4f8]/30 px-3 py-1.5 rounded-xl animate-in fade-in">
+            <span className="text-xs text-[#8ab4f8] font-medium flex items-center gap-1.5 truncate">
+              <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+              </svg>
+              Sửa từ lịch sử: <span className="text-gray-300 font-mono truncate max-w-[180px]">{editingSource}</span>
+            </span>
+            <button
+              onClick={() => setEditingSource(null)}
+              className="text-gray-400 hover:text-white text-xs px-1.5 py-0.5 rounded transition-colors"
+              title="Đóng thông báo"
+            >
+              ✕
+            </button>
           </div>
-          <div className={`text-white transition-all duration-200 ${state.result ? 'text-6xl font-medium' : 'text-4xl text-gray-600'}`}>
-            {state.result ? `= ${state.result}` : '0'}
+        )}
+
+        {/* Expression Input Area */}
+        <div className="text-right overflow-x-auto no-scrollbar w-full">
+          <input
+            ref={inputRef}
+            type="text"
+            value={state.expression}
+            onChange={(e) => {
+              const val = e.target.value;
+              const res = calculateResult(val);
+              setState(prev => ({ ...prev, expression: val, result: res }));
+            }}
+            placeholder="0"
+            className="w-full text-right bg-transparent text-gray-200 text-3xl font-light mb-1 focus:outline-none focus:border-b focus:border-[#8ab4f8] font-mono tracking-wide selection:bg-[#8ab4f8]/30"
+          />
+          <div className={`text-white transition-all duration-200 ${state.result ? 'text-5xl font-medium text-[#8ab4f8]' : 'text-3xl text-gray-600'}`}>
+            {state.result ? `= ${state.result}` : ' '}
           </div>
         </div>
       </div>
